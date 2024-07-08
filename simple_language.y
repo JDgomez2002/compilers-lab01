@@ -2,8 +2,14 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <cstdlib>
+
 static std::map<std::string, int> vars;
-inline void yyerror(const char *str) { std::cout << str << std::endl; }
+
+void yyerror(const char *str) {
+    std::cerr << "Error: " << str << std::endl;
+}
+
 int yylex();
 %}
 
@@ -11,6 +17,9 @@ int yylex();
 
 %token<num> NUMBER
 %token<str> ID
+%token EOL
+%token UNKNOWN_CHAR
+
 %type<num> expression
 %type<num> assignment
 
@@ -27,8 +36,13 @@ statement_list: statement
     | statement_list statement
     ;
 
-statement: assignment
-    | expression ':'          { std::cout << $1 << std::endl; }
+statement: assignment EOL
+    | expression ':' EOL        { std::cout << $1 << std::endl; }
+    | error EOL                 { yyerrok; }
+    | UNKNOWN_CHAR              { 
+        std::cerr << "Error: token desconocido" << std::endl; 
+        yyerrok; 
+    }
     ;
 
 assignment: ID '=' expression
@@ -40,16 +54,36 @@ assignment: ID '=' expression
     ;
 
 expression: NUMBER                  { $$ = $1; }
-    | ID                            { $$ = vars[*$1];      delete $1; }
+    | ID                            { 
+        if (vars.find(*$1) == vars.end()) {
+            yyerror(("Undefined variable: " + *$1).c_str());
+            $$ = 0;
+        } else {
+            $$ = vars[*$1];
+        }
+        delete $1; 
+    }
     | expression '+' expression     { $$ = $1 + $3; }
     | expression '-' expression     { $$ = $1 - $3; }
     | expression '*' expression     { $$ = $1 * $3; }
-    | expression '/' expression     { $$ = $1 / $3; }
+    | expression '/' expression     { 
+        if ($3 == 0) {
+            yyerror("Division by zero");
+            $$ = 0;
+        } else {
+            $$ = $1 / $3;
+        }
+    }
+    | '(' expression ')'            { $$ = $2; }
+    | error                         { $$ = 0; }
     ;
-
 %%
 
 int main() {
-    yyparse();
+    int result = yyparse();
+    if (result != 0) {
+        std::cerr << "Parsing failed" << std::endl;
+        return 1;
+    }
     return 0;
 }
